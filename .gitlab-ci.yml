@@ -1,0 +1,39 @@
+stages:
+  - validate
+  - security_scan
+  - plan
+  - deploy
+
+variables:
+  TF_VERSION: "1.5.0"
+
+# Stage 1: Static Analysis
+terraform_validate:
+  stage: validate
+  image: hashicorp/terraform:${TF_VERSION}
+  script:
+    - terraform init -backend=false
+    - terraform validate
+
+# Stage 2: Policy as Code (The Security Lever)
+security_scan:
+  stage: security_scan
+  image: bridgecrew/checkov:latest
+  script:
+    - checkov -d . --framework terraform --soft-fail
+  artifacts:
+    paths:
+      - checkov_report.xml
+    reports:
+      junit: checkov_report.xml
+
+# Stage 3: The Plan (Drafting the change)
+terraform_plan:
+  stage: plan
+  image: hashicorp/terraform:${TF_VERSION}
+  script:
+    - terraform init
+    - terraform plan -out=tfplan
+  artifacts:
+    paths:
+      - tfplan
