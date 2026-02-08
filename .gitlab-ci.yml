@@ -1,39 +1,53 @@
 stages:
   - validate
-  - security_scan
   - plan
-  - deploy
+  - compliance
+  - apply
 
 variables:
-  TF_VERSION: "1.5.0"
+  TF_ROOT: "."
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
 
-# Stage 1: Static Analysis
-terraform_validate:
+terraform:validate:
+  image: hashicorp/terraform:1.6.6
   stage: validate
-  image: hashicorp/terraform:${TF_VERSION}
   script:
+    - cd "$TF_ROOT"
     - terraform init -backend=false
+    - terraform fmt -check -diff
     - terraform validate
 
-# Stage 2: Policy as Code (The Security Lever)
-security_scan:
-  stage: security_scan
-  image: bridgecrew/checkov:latest
-  script:
-    - checkov -d . --framework terraform --soft-fail
-  artifacts:
-    paths:
-      - checkov_report.xml
-    reports:
-      junit: checkov_report.xml
-
-# Stage 3: The Plan (Drafting the change)
-terraform_plan:
+terraform:plan:
+  image: hashicorp/terraform:1.6.6
   stage: plan
-  image: hashicorp/terraform:${TF_VERSION}
+  needs:
+    - terraform:validate
   script:
+    - cd "$TF_ROOT"
     - terraform init
-    - terraform plan -out=tfplan
+    - terraform plan -out tfplan.binary
+    - terraform show -json tfplan.binary > tfplan.json
   artifacts:
     paths:
-      - tfplan
+      - $TF_ROOT/tfplan.binary
+      - $TF_ROOT/tfplan.json
+
+terraform:compliance:
+  image: python:3.11-alpine
+  stage: compliance
+  needs:
+    - terraform:plan
+  script:
+    - pip install --no-cache-dir terraform-compliance
+    - terraform-compliance -p "$TF_ROOT/tfplan.json" -f "$TF_ROOT/features"
+
+terraform:apply:
+  image: hashicorp/terraform:1.6.6
+  stage: apply
+  needs:
+    - terraform:compliance
+  when: manual
+  script:
+    - cd "$TF_ROOT"
+    - terraform apply -auto-approve tfplan.binary

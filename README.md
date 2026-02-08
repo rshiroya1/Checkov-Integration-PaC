@@ -1,16 +1,39 @@
 # Checkov-Integration-PaC: Secure AWS Provisioning Pipeline
 
-##  Overview
-A production-grade DevSecOps pipeline that automates the deployment of hardened AWS infrastructure. This project demonstrates how to move "Security to the Left" by integrating Policy as Code (PaC) and automated vulnerability scanning into the CI/CD lifecycle.
-##  Security Features
-- **Policy as Code:** Uses `Checkov` to enforce 50+ AWS security best practices (e.g., encryption at rest, no public S3 access).
-- **Least Privilege:** Implements IAM roles for Service Accounts (IRSA) and encrypted state management.
-- **KMS Integration:** Automated rotation of encryption keys for all data-at-rest.
-##  Tech
+## Overview
+A production-grade DevSecOps pipeline that automates deployment of hardened AWS infrastructure.
+This repo shifts security left by adding Policy as Code (PaC) gates before infrastructure is applied.
+
+## Security Features
+- **Policy as Code (Terraform Compliance):** Plan-time behavioral checks to enforce least privilege.
+- **KMS Integration:** Encryption key rotation for data-at-rest.
+- **S3 Hardening:** Public access blocked and bucket encryption enforced.
+
+## Tech
 - **IaC:** Terraform
 - **CI/CD:** GitLab CI
-- **Security Scanners:** Checkov, SonarQube
+- **Security Scanners:** Terraform Compliance
 - **Cloud:** AWS (S3, KMS, IAM)
-##  Impact
-- **Reduced Risk:** 100% of infrastructure code is scanned for misconfigurations prior to deployment.
-- **Efficiency:** Automated provisioning reduces manual intervention and human error by ~60%.
+
+## CI Security Gates
+This repository blocks `terraform apply` unless plan-time policy checks pass.
+
+### Pipeline flow
+1. `terraform:validate` — Terraform format + validation.
+2. `terraform:plan` — generates `tfplan.binary` and `tfplan.json`.
+3. `terraform:compliance` — runs `terraform-compliance` against `features/`.
+4. `terraform:apply` — manual apply, only available after prior checks pass.
+
+### Least-privilege checks currently enforced
+In `features/least_privilege.feature`, IAM policies fail if:
+- `Action` contains `"*"`
+- `Resource` contains `"*"`
+
+## Local run example
+```bash
+terraform init
+terraform plan -out tfplan.binary
+terraform show -json tfplan.binary > tfplan.json
+pip install terraform-compliance
+terraform-compliance -p tfplan.json -f features
+```
